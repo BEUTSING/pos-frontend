@@ -40,13 +40,27 @@ class ApiService {
   }
 
   // ── _headers ──────────────────────────────────────────────────────────────
+  // Builds HTTP headers for every request.
+  // X-Company-Id tells Symfony which company to use for filtering data.
+  // This is needed when an admin has multiple companies — Symfony reads
+  // this header in CompanyService.getCurrentCompany() to return the right one.
   Future<Map<String, String>> _headers() async {
-    final token = await _getToken();
+    final token     = await _getToken();
+    final companyId = await _getCompanyId();
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      // JWT token — required for all protected routes
       if (token != null) 'Authorization': 'Bearer $token',
+      // Active company ID — tells Symfony which restaurant to filter by
+      if (companyId.isNotEmpty) 'X-Company-Id': companyId,
     };
+  }
+
+  // ── _getCompanyId — reads active company from local storage ───────────────
+  Future<String> _getCompanyId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('companyId') ?? '';
   }
 
   // ── GET — simple GET without body ─────────────────────────────────────────

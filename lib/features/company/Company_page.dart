@@ -17,6 +17,7 @@ import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/widgets.dart';
 import '../../core/main_layout.dart';
+import '../../core/role_guard.dart';
 
 class CompanyPage extends StatefulWidget {
   const CompanyPage({super.key});
@@ -27,14 +28,27 @@ class CompanyPage extends StatefulWidget {
 
 class _CompanyPageState extends State<CompanyPage> {
   final _api = ApiService();
-  List<dynamic> _companies = [];
-  bool _loading = true;
-  String _error = '';
+  List<dynamic> _companies  = [];
+  bool   _loading            = true;
+  String _error              = '';
+  // ID of the currently active company — highlighted in green
+  String _activeCompanyId    = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadActiveId(); // read currently active company from local storage
+  }
+
+  // ── Load the currently active company ID from SharedPreferences ──────────
+  Future<void> _loadActiveId() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      // kCompanyId is saved when user activates a company
+      _activeCompanyId = prefs.getString(kCompanyId) ?? '';
+    });
   }
 
   // ── Load all companies of the logged-in user ──────────────────────────────
@@ -78,19 +92,29 @@ class _CompanyPageState extends State<CompanyPage> {
     }
   }
 
-  // ── Set active company (saved in SharedPreferences) ───────────────────────
+  // ── Set active company — called on double tap ────────────────────────────
+  // Saves the selected company in SharedPreferences so all pages use it
   Future<void> _setActive(dynamic company) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(kCompanyName, company['nameComp'] ?? '');
-    await prefs.setString(kCompanyId, company['id']?.toString() ?? '');
+    final prefs  = await SharedPreferences.getInstance();
+    final name   = company['nameComp'] ?? '';
+    final id     = company['id']?.toString() ?? '';
+
+    // Save to local storage — persists between sessions
+    await prefs.setString(kCompanyName, name);
+    await prefs.setString(kCompanyId,   id);
+
     if (!mounted) return;
-    showSuccess(context,
-        '"${company['nameComp']}" est maintenant le restaurant actif');
+    // Update the highlighted card immediately (no need to reload the list)
+    setState(() => _activeCompanyId = id);
+
+    showSuccess(context, '"$name" est maintenant le restaurant actif ✓');
   }
 
   @override
   Widget build(BuildContext context) {
-    return MainLayout(
+    return RoleGuard(
+      route: '/company',
+      child: MainLayout(
       currentRoute: '/company',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,6 +165,7 @@ class _CompanyPageState extends State<CompanyPage> {
           ),
         ],
       ),
+    )
     );
   }
 
@@ -167,9 +192,16 @@ class _CompanyPageState extends State<CompanyPage> {
                 width: itemW,
                 child: _CompanyCard(
                   company: company,
+                  // Compare company id (String) with _activeCompanyId (String)
+                  isActive: company['id']?.toString() == _activeCompanyId,
                   onEdit: () => _openForm(company),
-                  onDelete: () =>
-                      _delete(company['id'] as int, company['nameComp'] ?? ''),
+                  onDelete: () => _delete(
+                    company['id'] is int
+                        ? company['id'] as int
+                        : int.tryParse(company['id'].toString()) ?? 0,
+                    company['nameComp'] ?? '',
+                  ),
+                  // Single tap = activate, double tap also works via GestureDetector
                   onSetActive: () => _setActive(company),
                 ),
               );
@@ -186,12 +218,14 @@ class _CompanyPageState extends State<CompanyPage> {
 // ═══════════════════════════════════════════════════════════════════════════
 class _CompanyCard extends StatelessWidget {
   final dynamic company;
+  final bool     isActive;    // true = this is the currently active restaurant
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final VoidCallback onSetActive;
+  final VoidCallback onSetActive; // called on double tap
 
   const _CompanyCard({
     required this.company,
+    required this.isActive,
     required this.onEdit,
     required this.onDelete,
     required this.onSetActive,
@@ -199,19 +233,31 @@ class _CompanyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: kCardBg,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
-        ],
-        border: Border.all(color: kBorderColor),
-      ),
+    return GestureDetector(
+      // Double tap = set this company as active
+      onDoubleTap: onSetActive,
+      child: AnimatedContainer(
+        // Smooth transition when active state changes
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          // Active card has a green tint, inactive stays white
+          color: isActive ? kPrimary.withOpacity(0.04) : kCardBg,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+                color: isActive
+                    ? kPrimary.withOpacity(0.15)
+                    : Colors.black.withOpacity(0.06),
+                blurRadius: isActive ? 14 : 10,
+                offset: const Offset(0, 4))
+          ],
+          // Active card has a green border, inactive has grey
+          border: Border.all(
+            color: isActive ? kPrimary : kBorderColor,
+            width: isActive ? 2.0 : 1.0,
+          ),
+        ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -262,25 +308,62 @@ class _CompanyCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Action buttons
+          // ── Active badge — shown only on the active card ─────────
+          if (isActive) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: kPrimary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle, color: kPrimary, size: 14),
+                  SizedBox(width: 6),
+                  Text("Restaurant actif",
+                      style: TextStyle(
+                          color: kPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+
+          // ── Action buttons ────────────────────────────────────────
           Row(
             children: [
-              // Set as active
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onSetActive,
-                  icon: const Icon(Icons.check_circle_outline,
-                      size: 16, color: kPrimary),
-                  label: const Text("Activer",
-                      style: TextStyle(color: kPrimary, fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: kPrimary),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+              // Hint for double tap — only shown on inactive cards
+              if (!isActive)
+                Expanded(
+                  child: Tooltip(
+                    message: "Double-cliquez pour activer ce restaurant",
+                    child: OutlinedButton.icon(
+                      onPressed: onSetActive,
+                      icon: const Icon(Icons.radio_button_unchecked,
+                          size: 14, color: kTextSecondary),
+                      label: const Text("Activer",
+                          style: TextStyle(
+                              color: kTextSecondary, fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: kBorderColor),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
                   ),
+                )
+              else
+                // Already active — show disabled state
+                const Expanded(
+                  child: SizedBox(),
                 ),
-              ),
               const SizedBox(width: 8),
-              // Edit
+              // Edit button
               IconButton(
                 icon: const Icon(Icons.edit_outlined,
                     color: kInfoColor, size: 18),
@@ -289,7 +372,7 @@ class _CompanyCard extends StatelessWidget {
                 constraints:
                     const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
-              // Delete
+              // Delete button
               IconButton(
                 icon: const Icon(Icons.delete_outlined,
                     color: kErrorColor, size: 18),
@@ -302,7 +385,8 @@ class _CompanyCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ), // AnimatedContainer
+    ); // GestureDetector
   }
 
   Widget _infoRow(IconData icon, String text) {

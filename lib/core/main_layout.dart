@@ -20,6 +20,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'constants.dart';
+import 'role_guard.dart'; // role-based access control
 import 'api_service.dart'; // needed to fetch company name
 
 import '../features/dashboard/dashboard_page.dart';
@@ -384,77 +385,117 @@ class _SidebarContentState extends State<_SidebarContent> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
-                  // ── NAVIGATION section ───────────────────────────────────
-                  _sectionLabel("NAVIGATION"),
-                  _NavItem(
-                    icon: Icons.dashboard_outlined,
-                    label: "Dashboard",
-                    route: '/dashboard',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const DashboardPage()),
-                  ),
-                  _NavItem(
-                    icon: Icons.receipt_long_outlined,
-                    label: "Commandes",
-                    route: '/order',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const OrderPage()),
-                  ),
-                  _NavItem(
-                    icon: Icons.point_of_sale_outlined,
-                    label: "Ventes",
-                    route: '/sale',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const SalePage()),
+                  // ── NAVIGATION ───────────────────────────────────────
+                  // Dashboard — ROLE_MANAGER + ROLE_ADMIN
+                  RoleVisible(
+                    allowedRoles: [AppRole.admin, AppRole.manager],
+                    child: Column(children: [
+                      _sectionLabel("NAVIGATION"),
+                      _NavItem(
+                        icon: Icons.dashboard_outlined,
+                        label: "Dashboard",
+                        route: '/dashboard',
+                        currentRoute: widget.currentRoute,
+                        onTap: () => _navigate(context, const DashboardPage()),
+                      ),
+                    ]),
                   ),
 
-                  // ── CATALOGUE section ────────────────────────────────────
-                  _sectionLabel("CATALOGUE"),
-                  _NavItem(
-                    icon: Icons.shopping_bag_outlined,
-                    label: "Produits",
-                    route: '/product',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const ProductPage()),
-                  ),
-                  _NavItem(
-                    icon: Icons.category_outlined,
-                    label: "Catégories",
-                    route: '/category',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const CategoryPage()),
-                  ),
-                  _NavItem(
-                    icon: Icons.local_shipping_outlined,
-                    label: "Fournisseurs",
-                    route: '/supplier',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const SupplierPage()),
-                  ),
-                  _NavItem(
-                    icon: Icons.swap_vert_outlined,
-                    label: "Mvt. de Stock",
-                    route: '/stock',
-                    currentRoute: widget.currentRoute,
-                    onTap: () =>
-                        _navigate(context, const StockMovementPage()),
+                  // Commandes — ALL roles (waiter, teller, manager, admin)
+                  RoleVisible(
+                    allowedRoles: [AppRole.admin, AppRole.manager,
+                        AppRole.teller, AppRole.waiter],
+                    child: _NavItem(
+                      icon: Icons.receipt_long_outlined,
+                      label: "Commandes",
+                      route: '/order',
+                      currentRoute: widget.currentRoute,
+                      onTap: () => _navigate(context, const OrderPage()),
+                    ),
                   ),
 
-                  // ── GESTION section ──────────────────────────────────────
-                  _sectionLabel("GESTION"),
-                  _NavItem(
-                    icon: Icons.store_outlined,
-                    label: "Mes Restaurants",
-                    route: '/company',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const CompanyPage()),
+                  // Ventes — ROLE_TELLER + ROLE_MANAGER + ROLE_ADMIN
+                  RoleVisible(
+                    allowedRoles: [AppRole.admin, AppRole.manager, AppRole.teller],
+                    child: _NavItem(
+                      icon: Icons.point_of_sale_outlined,
+                      label: "Ventes",
+                      route: '/sale',
+                      currentRoute: widget.currentRoute,
+                      onTap: () => _navigate(context, const SalePage()),
+                    ),
                   ),
-                  _NavItem(
-                    icon: Icons.people_outline,
-                    label: "Utilisateurs",
-                    route: '/users',
-                    currentRoute: widget.currentRoute,
-                    onTap: () => _navigate(context, const UsersPage()),
+
+                  // ── CATALOGUE ────────────────────────────────────────────
+                  // All CATALOGUE items — ROLE_MANAGER + ROLE_ADMIN
+                  // Waiter can only SEE products in the order page (not manage them)
+                  RoleVisible(
+                    allowedRoles: [AppRole.admin, AppRole.manager],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionLabel("CATALOGUE"),
+                        _NavItem(
+                          icon: Icons.shopping_bag_outlined,
+                          label: "Produits",
+                          route: '/product',
+                          currentRoute: widget.currentRoute,
+                          onTap: () => _navigate(context, const ProductPage()),
+                        ),
+                        _NavItem(
+                          icon: Icons.category_outlined,
+                          label: "Catégories",
+                          route: '/category',
+                          currentRoute: widget.currentRoute,
+                          onTap: () => _navigate(context, const CategoryPage()),
+                        ),
+                        _NavItem(
+                          icon: Icons.local_shipping_outlined,
+                          label: "Fournisseurs",
+                          route: '/supplier',
+                          currentRoute: widget.currentRoute,
+                          onTap: () => _navigate(context, const SupplierPage()),
+                        ),
+                        _NavItem(
+                          icon: Icons.swap_vert_outlined,
+                          label: "Mvt. de Stock",
+                          route: '/stock',
+                          currentRoute: widget.currentRoute,
+                          onTap: () => _navigate(context, const StockMovementPage()),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── GESTION ───────────────────────────────────────────────
+                  // Mes Restaurants — ROLE_ADMIN only
+                  RoleVisible(
+                    allowedRoles: [AppRole.admin],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionLabel("GESTION"),
+                        _NavItem(
+                          icon: Icons.store_outlined,
+                          label: "Mes Restaurants",
+                          route: '/company',
+                          currentRoute: widget.currentRoute,
+                          onTap: () => _navigate(context, const CompanyPage()),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Utilisateurs — ROLE_MANAGER + ROLE_ADMIN
+                  RoleVisible(
+                    allowedRoles: [AppRole.admin, AppRole.manager],
+                    child: _NavItem(
+                      icon: Icons.people_outline,
+                      label: "Utilisateurs",
+                      route: '/users',
+                      currentRoute: widget.currentRoute,
+                      onTap: () => _navigate(context, const UsersPage()),
+                    ),
                   ),
 
                   // Bottom spacing so last item isn't hidden by footer
