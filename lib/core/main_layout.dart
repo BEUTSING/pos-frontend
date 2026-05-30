@@ -20,6 +20,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'constants.dart';
+import 'api_service.dart'; // needed to fetch company name
 
 import '../features/dashboard/dashboard_page.dart';
 import '../features/product/product_page.dart';
@@ -85,34 +86,13 @@ class MainLayout extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   // TODO: replace with Image.asset('assets/logo.png')
-                  child: // ClipRRect — clips its child widget with rounded corners
-// Without this, the image would have sharp square corners
-ClipRRect(
-  // borderRadius — how rounded the corners are
-  // circular(8) = 8 pixels of rounding on all 4 corners
-  borderRadius: BorderRadius.circular(8),
-
-  // child — the widget to display inside the rounded clip
-  child: Image.asset(
-    // path to the image file inside the assets/ folder
-    // declared in pubspec.yaml under flutter: assets:
-    'assets/logo.png',
-
-    // width — horizontal size of the image in pixels
-    width: 36,
-
-    // height — vertical size of the image in pixels
-    height: 36,
-
-    // fit: BoxFit.contain — scales the image to fit inside
-    // the 36x36 box WITHOUT cropping or stretching it
-    // Other options:
-    //   BoxFit.cover  = fills the box, may crop edges
-    //   BoxFit.fill   = stretches to fill, may distort
-    //   BoxFit.contain = keeps aspect ratio, fits inside ✅
-    fit: BoxFit.contain,
-  ),
-),
+                  child: const Center(
+                    child: Text('C',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold)),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 const Column(
@@ -226,11 +206,44 @@ class _SidebarContentState extends State<_SidebarContent> {
 
   Future<void> _loadInfo() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Read stored values
+    String storedCompany = prefs.getString(kCompanyName) ?? '';
+    String storedName    = prefs.getString(kUserName)    ?? '';
+    String storedRole    = prefs.getString(kUserRole)    ?? '';
+
+    // If company name is empty or still default, fetch from API
+    if (storedCompany.isEmpty || storedCompany == 'Mon Restaurant') {
+      try {
+        // GET /api/v1/company/list returns the list of companies for this user
+        final api = ApiService();
+        final res = await api.get('/company/list');
+        if (res.success && res.data is List && (res.data as List).isNotEmpty) {
+          // Take the first company as the active one
+          final company = (res.data as List).first;
+          storedCompany = company['nameComp'] ?? 'Mon Restaurant';
+          // Save it so next load is instant
+          await prefs.setString(kCompanyName, storedCompany);
+          await prefs.setString(
+              kCompanyId, company['id']?.toString() ?? '');
+        }
+      } catch (_) {
+        // If API fails, keep the stored value
+        storedCompany = storedCompany.isEmpty ? 'Mon Restaurant' : storedCompany;
+      }
+    }
+
+    // If username is email (from login), try to extract the name part
+    if (storedName.contains('@')) {
+      storedName = storedName.split('@').first;
+      await prefs.setString(kUserName, storedName);
+    }
+
     if (!mounted) return;
     setState(() {
-      _companyName = prefs.getString(kCompanyName) ?? 'Mon Restaurant';
-      _userName    = prefs.getString(kUserName)    ?? 'Utilisateur';
-      _userRole    = prefs.getString(kUserRole)    ?? 'Rôle';
+      _companyName = storedCompany.isEmpty ? 'Mon Restaurant' : storedCompany;
+      _userName    = storedName.isEmpty    ? 'Utilisateur'    : storedName;
+      _userRole    = storedRole.isEmpty    ? 'Rôle'           : storedRole;
     });
   }
 

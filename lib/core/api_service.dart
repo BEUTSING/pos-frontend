@@ -157,15 +157,46 @@ class ApiService {
       body = response.body;
     }
 
-    // ── 401 Unauthorized = JWT token expired or invalid ───────────────────
-    // Clear the token and trigger navigation to login page
+    // ── 401 Unauthorized ─────────────────────────────────────────────────
+    // Two cases:
+    //   1. "Expired JWT Token"  → token expired → clear + redirect to login
+    //   2. "Invalid credentials" / "email and password" → wrong password
+    //      → return error normally, do NOT redirect (user is on login page)
     if (statusCode == 401) {
-      _clearTokenAndRedirect();
-      return ApiResponse(
-        success: false,
-        error: 'Session expirée. Veuillez vous reconnecter.',
-        statusCode: 401,
-      );
+      // Extract the error message from the response body
+      String msg401 = '';
+      if (body is Map) {
+        msg401 = (body['message'] ?? body['error'] ?? '').toString().toLowerCase();
+      } else if (body is String) {
+        msg401 = body.toLowerCase();
+      }
+
+      // Only redirect if it's a JWT token expiry — NOT a wrong password
+      final isTokenExpired = msg401.contains('expired jwt') ||
+          msg401.contains('jwt token not found') ||
+          msg401.contains('invalid jwt') ||
+          msg401.contains('unable to find token');
+
+      if (isTokenExpired) {
+        // Token expired → clear storage and go to login
+        _clearTokenAndRedirect();
+        return ApiResponse(
+          success: false,
+          error: 'Session expirée. Veuillez vous reconnecter.',
+          statusCode: 401,
+        );
+      } else {
+        // Wrong credentials → return the error message normally
+        // Do NOT redirect — login_page will show the error in a snackbar
+        final errorMsg = body is Map
+            ? (body['error'] ?? body['message'] ?? 'Identifiants invalides')
+            : 'Identifiants invalides';
+        return ApiResponse(
+          success: false,
+          error: errorMsg.toString(),
+          statusCode: 401,
+        );
+      }
     }
 
     if (statusCode >= 200 && statusCode < 300) {

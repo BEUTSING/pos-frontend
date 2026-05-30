@@ -478,7 +478,7 @@ class _OrderPageState extends State<OrderPage> {
                 (p) => p['id'] == entry.key,
                 orElse: () => <String, dynamic>{});
             if (product.isEmpty) return const SizedBox();
-            final price    = (product['saleprice'] ?? 0) as num;
+            final price    = _safeDouble(product['saleprice']);
             final subtotal = price * entry.value;
             return _OrderLineItem(
               name:     product['productname'] ?? '',
