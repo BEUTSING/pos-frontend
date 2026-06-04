@@ -3,6 +3,7 @@ import '../../core/constants.dart';
 import '../../core/api_service.dart';
 import '../../core/widgets.dart';
 import '../../core/main_layout.dart';
+import '../../core/role_guard.dart';
 
 // ═══════════════════════════════════════════════════════════════
 // PAGE VENTES
@@ -25,7 +26,19 @@ class _SalePageState extends State<SalePage> {
 
   // Pour valider une commande existante en vente
   final _orderIdCtrl = TextEditingController();
-  final _paymentCtrl = TextEditingController(text: 'Cash');
+  // Payment method — selected from dropdown, not typed manually
+  // Matches the paymentMethod values expected by Symfony CheckoutService
+  String _selectedPayment = 'Cash';
+
+  // Available payment methods shown in the dropdown
+  static const List<Map<String, dynamic>> _paymentMethods = [
+    {'value': 'Cash',          'label': 'Espèces',        'icon': Icons.money},
+    {'value': 'Card',          'label': 'Carte bancaire', 'icon': Icons.credit_card_outlined},
+    {'value': 'Mobile Money',  'label': 'Mobile Money',   'icon': Icons.phone_android_outlined},
+    {'value': 'Orange Money',  'label': 'Orange Money',   'icon': Icons.account_balance_wallet_outlined},
+    {'value': 'Wave',          'label': 'Wave',           'icon': Icons.waves_outlined},
+    {'value': 'Transfer',      'label': 'Virement',       'icon': Icons.swap_horiz_outlined},
+  ];
   bool _validating = false;
 
   @override
@@ -37,7 +50,7 @@ class _SalePageState extends State<SalePage> {
   @override
   void dispose() {
     _orderIdCtrl.dispose();
-    _paymentCtrl.dispose();
+    // _selectedPayment is a String — no controller to dispose
     super.dispose();
   }
 
@@ -67,7 +80,8 @@ class _SalePageState extends State<SalePage> {
     setState(() => _validating = true);
     final res = await _api.post('/checkout/sale', {
       'customerOrderId': int.tryParse(_orderIdCtrl.text) ?? 0,
-      'paymentMethod': _paymentCtrl.text,
+      // Send the selected payment method value to Symfony
+      'paymentMethod': _selectedPayment,
     });
     setState(() => _validating = false);
     if (!mounted) return;
@@ -158,13 +172,41 @@ class _SalePageState extends State<SalePage> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _paymentCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Mode de paiement',
-                prefixIcon: Icon(Icons.payment_outlined),
-                border: OutlineInputBorder(),
-              ),
+            // ── Payment method dropdown ──────────────────────────────
+            // StatefulBuilder needed to update the dropdown inside AlertDialog
+            // (AlertDialog is outside the main widget tree, setState won't work)
+            StatefulBuilder(
+              builder: (context, setDropState) {
+                return DropdownButtonFormField<String>(
+                  value: _selectedPayment,
+                  decoration: const InputDecoration(
+                    labelText: 'Mode de paiement',
+                    prefixIcon: Icon(Icons.payment_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  // Build one item per payment method
+                  items: _paymentMethods.map((method) {
+                    return DropdownMenuItem<String>(
+                      value: method['value'] as String,
+                      child: Row(
+                        children: [
+                          Icon(method['icon'] as IconData,
+                              size: 18, color: kTextSecondary),
+                          const SizedBox(width: 10),
+                          Text(method['label'] as String),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      // Update both the dialog state AND the parent state
+                      setDropState(() => _selectedPayment = val);
+                      setState(() => _selectedPayment = val);
+                    }
+                  },
+                );
+              },
             ),
           ],
         ),
@@ -189,7 +231,9 @@ class _SalePageState extends State<SalePage> {
 
   @override
   Widget build(BuildContext context) {
-    return MainLayout(
+    return RoleGuard(
+      route: '/sale',
+      child: MainLayout(
       currentRoute: '/sale',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,6 +278,7 @@ class _SalePageState extends State<SalePage> {
           ),
         ],
       ),
+    )
     );
   }
 
@@ -388,7 +433,7 @@ class _SalePageState extends State<SalePage> {
           }),
         ],
       ),
-    );
+    );// RoleGuard
   }
 }
 
